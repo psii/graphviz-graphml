@@ -66,6 +66,7 @@ data YNode = YNode { yBgColor :: String
                    , yFgColor :: String
                    , yBorderColor :: String
                    , yBorderWidth :: Double
+                   , yBorderStyle :: String
                    , yLabel   :: String
                    , yShape :: String
                    }
@@ -75,6 +76,7 @@ defaultYNode = YNode { yBgColor = "#ffffff"
                      , yFgColor = "#000000"
                      , yBorderColor = "#000000"
                      , yBorderWidth = 1
+                     , yBorderStyle = "line"
                      , yLabel = ""
                      , yShape = "ellipse"
                      }
@@ -84,7 +86,7 @@ yNodeToXml YNode{..} =
   xelem "y:ShapeNode" $ xelems
     [xelem "y:Fill" (xattr "color" yBgColor <> xattr "transparent" "false")
     ,xelem "y:BorderStyle" (xattr "color" yBorderColor <>
-                            xattr "type" "line" <>
+                            xattr "type" yBorderStyle <>
                             xattr "width" (show yBorderWidth))
     ,xelem "y:NodeLabel" (xattr "textColor" yFgColor <#>
                           xtext yLabel)
@@ -104,6 +106,7 @@ handleNodeAttrs defLbl = foldr go defaultYNode { yLabel = defLbl }
           FontColor c -> s { yFgColor = color2hex c }
           Label (StrLabel l) -> s { yLabel = T.unpack l }
           Shape sh -> s { yShape = shapeName sh }
+          Style (i:is) -> applyStyle i $ go (Style is) s
           _ -> s
 
         shapeName sh = case sh of BoxShape      -> "rectangle"
@@ -118,6 +121,13 @@ handleNodeAttrs defLbl = foldr go defaultYNode { yLabel = defLbl }
                                   Box3D         -> "rectangle3d"
                                   Parallelogram -> "parallelogram"
                                   _ -> "rectangle"
+
+        applyStyle (SItem sname _) s = case sname of
+          Dashed -> s { yBorderStyle = "dashed" }
+          Dotted -> s { yBorderStyle = "dotted" }
+          Solid  -> s { yBorderStyle = "line" }
+          Bold   -> s { yBorderWidth = 2 }
+          _ -> s
                                           
 
 handleEdge :: (String -> String) -> (Int, DotEdge String) -> Xml Elem
@@ -133,8 +143,9 @@ handleEdge nodeName (eid, DotEdge{..}) =
 data YEdge = YEdge { yeWidth :: Double
                    , yeStyle :: String
                    , yeColor :: String
-                   , yeArrSrc :: String
-                   , yeArrDst :: String
+                   , yeArrSrc :: Maybe String
+                   , yeArrDst :: Maybe String
+                   , yeDir    :: DirType
                    , yeLabel :: Maybe String
                    , yeLblColor :: String
                    }
@@ -143,8 +154,9 @@ defaultYEdge :: YEdge
 defaultYEdge = YEdge { yeWidth = 1
                      , yeStyle = "line"
                      , yeColor = "#000000"
-                     , yeArrSrc = "none"
-                     , yeArrDst = "standard"
+                     , yeArrSrc = Nothing
+                     , yeArrDst = Nothing
+                     , yeDir    = Forward
                      , yeLabel = Nothing
                      , yeLblColor = "#000000"
                      }
@@ -153,10 +165,9 @@ handleEdgeAttrs :: Attributes -> YEdge
 handleEdgeAttrs = foldr go defaultYEdge
   where go attr s = case attr of
           Color (c:_) -> s { yeColor = color2hex c }
-          ArrowHead (AType ((_,sh):_)) -> s { yeArrDst = arrShape sh }
-          ArrowHead (AType []) -> s { yeArrDst = arrShape NoArrow }
-          ArrowTail (AType ((_,sh):_)) -> s { yeArrSrc = arrShape sh }
-          ArrowTail (AType []) -> s { yeArrSrc = arrShape NoArrow }
+          ArrowHead (AType ((_,sh):_)) -> s { yeArrDst = Just (arrShape sh) }
+          ArrowTail (AType ((_,sh):_)) -> s { yeArrSrc = Just (arrShape sh) }
+          Dir dir -> s { yeDir = dir }
           Label (StrLabel l) -> s { yeLabel = Just (T.unpack l) }
           FontColor c -> s { yeLblColor = color2hex c }
           Style (i:is) -> applyStyle i (go (Style is) s)
@@ -170,7 +181,7 @@ handleEdgeAttrs = foldr go defaultYEdge
                                  DotArrow -> "circle"
                                  Crow    -> "crows_foot_many"
                                  Inv     -> "crows_foot_many_mandatory"
-                                 Box     -> "circle"
+                                 Box     -> "convex"   -- MiniHack
 
         applyStyle (SItem sname _) s = case sname of
           Dashed -> s { yeStyle = "dashed" }
@@ -182,8 +193,8 @@ handleEdgeAttrs = foldr go defaultYEdge
 yEdgeToXml :: YEdge -> Xml Elem
 yEdgeToXml YEdge{..} =
     xelem "y:PolyLineEdge" $
-    xelem "y:Arrows" (xattr "source" yeArrSrc <>
-                      xattr "target" yeArrDst) <>
+    xelem "y:Arrows" (xattr "source" yeArrSrc' <>
+                      xattr "target" yeArrDst') <>
     xelem "y:BendStyle" (xattr "smoothed" "false") <>
     xelem "y:LineStyle" (xattr "color" yeColor <>
                          xattr "type" yeStyle <>
@@ -193,6 +204,11 @@ yEdgeToXml YEdge{..} =
                   xattr "textColor" yeLblColor <#>
                   xtext lbl
       Nothing -> mempty
+  where
+    isForward  = yeDir == Forward || yeDir == Both
+    isBack     = yeDir == Back || yeDir == Both
+    yeArrSrc'  = if isBack then fromMaybe "standard" yeArrSrc else "none"
+    yeArrDst'  = if isForward then fromMaybe "standard" yeArrDst else "none"
 
 
 convertDot :: FilePath -> IO ()
