@@ -26,3 +26,8 @@ library
                        text,
                        colour ==2.*,
                        containers
+
+source-repository head
+  type:                git
+  location:            git://github.com/psii/graphviz-graphml.git
+
