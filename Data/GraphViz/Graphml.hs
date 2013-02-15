@@ -97,12 +97,15 @@ color2hex :: AC.Color -> String
 color2hex c = fromMaybe "#000000" $
               (SRGB.sRGB24show . (`C.over` C.black)) <$> AC.toColour c
 
+wcolor2hex :: WeightedColor -> String
+wcolor2hex (WC c _) = color2hex c
+
 handleNodeAttrs :: String -> Attributes -> YNode
 handleNodeAttrs defLbl = foldr go defaultYNode { yLabel = defLbl }
   where go attr s = case attr of
-          Color (c:_) -> s { yBorderColor = color2hex c }
-          BgColor (c:_) -> s { yBgColor = color2hex c }
-          FillColor (c:_) -> s { yBgColor = color2hex c }
+          Color (c:_) -> s { yBorderColor = wcolor2hex c }
+          BgColor (c:_) -> s { yBgColor = wcolor2hex c }
+          FillColor (c:_) -> s { yBgColor = wcolor2hex c }
           FontColor c -> s { yFgColor = color2hex c }
           Label (StrLabel l) -> s { yLabel = T.unpack l }
           Shape sh -> s { yShape = shapeName sh }
@@ -164,7 +167,7 @@ defaultYEdge = YEdge { yeWidth = 1
 handleEdgeAttrs :: Attributes -> YEdge
 handleEdgeAttrs = foldr go defaultYEdge
   where go attr s = case attr of
-          Color (c:_) -> s { yeColor = color2hex c }
+          Color (c:_) -> s { yeColor = wcolor2hex c }
           ArrowHead (AType ((_,sh):_)) -> s { yeArrDst = Just (arrShape sh) }
           ArrowTail (AType ((_,sh):_)) -> s { yeArrSrc = Just (arrShape sh) }
           Dir dir -> s { yeDir = dir }
@@ -174,11 +177,11 @@ handleEdgeAttrs = foldr go defaultYEdge
           _ -> s
 
         arrShape sh = case sh of Normal  -> "delta"
-                                 Tee     -> "t_shape"
+                                 Tee     -> "dash"
                                  Diamond -> "diamond"
                                  NoArrow -> "none"
                                  Vee     -> "plain"
-                                 DotArrow -> "circle"
+                                 DotArrow -> "concave"
                                  Crow    -> "crows_foot_many"
                                  Inv     -> "crows_foot_many_mandatory"
                                  Box     -> "convex"   -- MiniHack
